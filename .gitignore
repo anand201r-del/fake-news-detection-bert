@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.pyc
+venv/
+.venv/
+.ipynb_checkpoints/
+
+# Large files - do NOT upload to GitHub
+model/
+checkpoints/
+*.safetensors
+*.bin
+*.zip
+data/*.csv
+data/processed/
+data/extra/*.csv
+
+# OS
+.DS_Store
+Thumbs.db

@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+{% block title %}History{% endblock %}
+
+{% block styles %}
+  .summary{display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-bottom:18px}
+  @media (max-width:700px){ .summary{grid-template-columns:repeat(2,1fr)} }
+  .sum{padding:16px 18px}
+  .sum b{display:block; font-size:26px; letter-spacing:-.03em; line-height:1.1}
+  .sum small{color:var(--muted); font-size:13px}
+  .toolbar{display:flex; flex-wrap:wrap; gap:8px; align-items:center; justify-content:space-between; margin-bottom:14px}
+  .filters{display:flex; gap:8px; flex-wrap:wrap}
+  .search{border:1px solid var(--line); background:var(--surface-2); color:var(--ink); border-radius:10px; padding:8px 12px;
+          font:14px Inter,sans-serif; min-width:220px; outline:none}
+  .search:focus{border-color:var(--brand)}
+  .list{display:grid; grid-template-columns:minmax(0,1fr); gap:10px}
+  .item{display:grid; grid-template-columns:auto minmax(0,1fr) auto; gap:14px; align-items:center; padding:14px 16px; cursor:pointer; transition:.15s}
+  .item:hover{border-color:var(--brand); transform:translateY(-1px)}
+  .item .txt{color:var(--ink); font-size:14px; overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical}
+  .item .sub{font-size:12px; color:var(--muted); margin-top:2px}
+  .item .conf{text-align:right; font-weight:700; font-size:15px}
+  .item .conf small{display:block; font-weight:500; font-size:11px; color:var(--muted)}
+  .del{border:0; background:none; color:var(--muted); cursor:pointer; font-size:18px; padding:4px 8px; border-radius:8px}
+  .del:hover{color:var(--fake); background:var(--fake-soft)}
+  .empty{text-align:center; padding:60px 20px; color:var(--muted)}
+  .empty h3{color:var(--ink); margin:10px 0 6px}
+{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <h1>History</h1>
+  <p>Your recent analyses. Click any item to open it again on the Analyze page. History is saved only in this browser.</p>
+</div>
+
+<div class="summary">
+  <div class="card sum"><b id="sTotal">0</b><small>Total checks</small></div>
+  <div class="card sum"><b id="sReal" style="color:var(--real)">0</b><small>Likely real</small></div>
+  <div class="card sum"><b id="sFake" style="color:var(--fake)">0</b><small>Likely fake</small></div>
+  <div class="card sum"><b id="sUnc" style="color:var(--unc)">0</b><small>Uncertain</small></div>
+</div>
+
+<div class="toolbar">
+  <div class="filters">
+    <button class="chip on" data-f="ALL">All</button>
+    <button class="chip" data-f="REAL"><span class="dot" style="background:var(--real)"></span>Real</button>
+    <button class="chip" data-f="FAKE"><span class="dot" style="background:var(--fake)"></span>Fake</button>
+    <button class="chip" data-f="UNCERTAIN"><span class="dot" style="background:var(--unc)"></span>Uncertain</button>
+  </div>
+  <div style="display:flex; gap:8px">
+    <input class="search" id="q" placeholder="Search history…">
+    <button class="btn btn-ghost" id="clearAll" style="padding:8px 14px; font-size:14px">Clear all</button>
+  </div>
+</div>
+
+<div class="list" id="list"></div>
+<div class="card empty hidden" id="empty">
+  <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5M12 7v5l3 2"/></svg>
+  <h3 id="emptyTitle">No history yet</h3>
+  <p id="emptyText">Analyse some news and it will appear here.</p>
+  <a class="btn btn-primary" href="/" style="margin-top:10px">Go to Analyze</a>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function(){
+  let filter = 'ALL';
+  const $ = s => document.getElementById(s);
+
+  function ago(t){
+    if (!t) return '';
+    const s = Math.floor((Date.now() - t) / 1000);
+    if (s < 60) return 'just now';
+    if (s < 3600) return Math.floor(s / 60) + ' min ago';
+    if (s < 86400) return Math.floor(s / 3600) + ' h ago';
+    return new Date(t).toLocaleDateString();
+  }
+
+  function render(){
+    const all = TL.load(), q = $('q').value.trim().toLowerCase();
+    $('sTotal').textContent = all.length;
+    $('sReal').textContent = all.filter(x => x.label === 'REAL').length;
+    $('sFake').textContent = all.filter(x => x.label === 'FAKE').length;
+    $('sUnc').textContent = all.filter(x => x.label === 'UNCERTAIN').length;
+
+    const items = all.filter(x => (filter === 'ALL' || x.label === filter) && (!q || x.text.toLowerCase().includes(q)));
+    const list = $('list'); list.innerHTML = '';
+    $('empty').classList.toggle('hidden', items.length > 0);
+    $('emptyTitle').textContent = all.length ? 'No matches' : 'No history yet';
+    $('emptyText').textContent = all.length ? 'Try another filter or search term.' : 'Analyse some news and it will appear here.';
+
+    items.forEach(item => {
+      const el = document.createElement('div'); el.className = 'card item';
+      const badge = document.createElement('span'); badge.className = 'badge ' + item.label; badge.textContent = item.label;
+      const mid = document.createElement('div');
+      const txt = document.createElement('div'); txt.className = 'txt'; txt.textContent = item.text;
+      const sub = document.createElement('div'); sub.className = 'sub';
+      sub.textContent = [item.words ? item.words + ' words' : '', ago(item.time)].filter(Boolean).join(' · ');
+      mid.append(txt, sub);
+      const right = document.createElement('div'); right.style.cssText = 'display:flex;align-items:center;gap:6px';
+      const conf = document.createElement('div'); conf.className = 'conf';
+      conf.innerHTML = (item.conf * 100).toFixed(0) + '%<small>confidence</small>';
+      const del = document.createElement('button'); del.className = 'del'; del.title = 'Remove'; del.textContent = '×';
+      del.addEventListener('click', e => { e.stopPropagation(); TL.save(TL.load().filter(x => x.text !== item.text)); render(); });
+      right.append(conf, del);
+      el.append(badge, mid, right);
+      el.addEventListener('click', () => { try { sessionStorage.setItem('prefill', item.text); } catch(e){} location.href = '/'; });
+      list.appendChild(el);
+    });
+  }
+
+  document.querySelectorAll('[data-f]').forEach(b => b.addEventListener('click', () => {
+    filter = b.dataset.f;
+    document.querySelectorAll('[data-f]').forEach(x => x.classList.toggle('on', x === b));
+    render();
+  }));
+  $('q').addEventListener('input', render);
+  $('clearAll').addEventListener('click', () => { TL.save([]); render(); });
+  render();
+})();
+</script>
+{% endblock %}

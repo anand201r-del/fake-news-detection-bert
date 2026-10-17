@@ -1,0 +1,8 @@
+{
+  "all": {"n": 21859, "accuracy": 0.9761, "f1": 0.9782, "precision": 0.9698, "recall": 0.9868},
+  "full": {"n": 5502, "accuracy": 0.9965, "f1": 0.9968, "precision": 0.9944, "recall": 0.9993},
+  "medium": {"n": 5061, "accuracy": 0.9874, "f1": 0.9881, "precision": 0.9812, "recall": 0.9951},
+  "short": {"n": 5611, "accuracy": 0.9503, "f1": 0.9558, "precision": 0.9378, "recall": 0.9745},
+  "title": {"n": 5685, "accuracy": 0.9717, "f1": 0.9744, "precision": 0.969, "recall": 0.9798},
+  "full_article_chunked": {"n": 1500, "accuracy": 0.9953, "f1": 0.9959, "precision": 0.9917, "recall": 1.0}
+}

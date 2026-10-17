@@ -1,0 +1,9 @@
+torch
+transformers>=4.40
+datasets
+accelerate
+scikit-learn
+pandas
+numpy
+matplotlib
+flask
