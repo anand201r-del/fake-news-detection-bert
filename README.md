@@ -34,6 +34,116 @@ This version fixes that:
 5. **Chunked inference:** long articles are split into overlapping 256-token windows and the probabilities are averaged.
 6. **Honest output:** confidence below 65% is shown as *Uncertain*, and very short inputs get a warning.
 
+## Architecture
+
+### 1. System overview
+
+The project has two parts: an **offline training pipeline** (run once on Google Colab) and an **online web application** (Flask) that loads the trained model and serves predictions.
+
+```mermaid
+flowchart LR
+    subgraph TRAIN["Training pipeline (Google Colab, T4 GPU)"]
+        DS[("ISOT dataset<br/>Fake.csv + True.csv")]
+        PREP["prepare_data.py<br/>clean, dedupe, remove leaks"]
+        LEAK["Leak check<br/>TF-IDF + Logistic Regression"]
+        SPLIT["Split by article<br/>70 / 15 / 15"]
+        AUG["Mixed-length samples<br/>title, short, medium, full"]
+        FT["train_bert.py<br/>fine-tune bert-base-uncased"]
+        EVAL["evaluate.py"]
+        DS --> PREP
+        PREP -.-> LEAK
+        PREP --> SPLIT
+        SPLIT --> AUG
+        AUG --> FT
+        FT --> EVAL
+    end
+
+    MODEL[("model/<br/>weights + tokenizer")]
+    REPORTS[("reports/<br/>metrics.json<br/>confusion_matrix.png")]
+    FT --> MODEL
+    EVAL --> REPORTS
+
+    subgraph WEB["Web application (Flask)"]
+        USER(["User in browser"])
+        APP["app.py<br/>routes + REST API"]
+        PRED["predictor.py<br/>chunking + averaging"]
+        CLEAN["text_utils.py<br/>clean_text"]
+        BERT["Fine-tuned BERT<br/>classifier"]
+        PAGES["Pages: Analyze, History,<br/>Performance, How it works, About"]
+        USER -->|"POST /api/predict"| APP
+        APP --> PRED
+        PRED --> CLEAN
+        PRED --> BERT
+        APP -->|"JSON result"| USER
+        APP --> PAGES
+    end
+
+    MODEL --> BERT
+    REPORTS --> PAGES
+```
+
+### 2. Training pipeline
+
+```mermaid
+flowchart TB
+    A["Raw articles<br/>44,898 rows"] --> B["Remove source fingerprints<br/>Reuters dateline, image credits,<br/>links, @handles, via"]
+    B --> C["Drop empty, short and duplicate articles<br/>37,897 unique articles"]
+    C --> D["Stratified split by article<br/>train 70% / val 15% / test 15%"]
+    D --> E["Create samples of different lengths<br/>headline, 1-2 sentences,<br/>3-6 sentences, full text"]
+    E --> F["Tokenize, max 256 tokens"]
+    F --> G["Fine-tune BERT<br/>2 epochs, lr 2e-5, fp16"]
+    G --> H["Evaluate on unseen test articles<br/>accuracy and F1 per input length"]
+```
+
+The split happens **before** the short and medium samples are created, so no piece of a test article ever appears in training (no data leakage).
+
+### 3. Prediction flow (one request)
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant UI as Browser (Analyze page)
+    participant API as Flask (app.py)
+    participant PR as predictor.py
+    participant M as Fine-tuned BERT
+
+    User->>UI: Paste article and click Analyze
+    UI->>API: POST /api/predict with the text
+    API->>PR: predict(text)
+    PR->>PR: clean_text removes source fingerprints
+    PR->>PR: Tokenize and split into 256-token chunks (50% overlap)
+    PR->>M: Batch of chunks
+    M-->>PR: Logits for each chunk
+    PR->>PR: Softmax, average over chunks, pick label
+    Note over PR: Confidence below 65% gives UNCERTAIN.<br/>Fewer than 8 words adds a warning.
+    PR-->>API: label, confidence, probabilities, warning
+    API-->>UI: JSON response
+    UI-->>User: Verdict, confidence gauge, probability bars
+    UI->>UI: Save to History (browser storage)
+```
+
+### 4. Model
+
+```mermaid
+flowchart TB
+    IN["Cleaned text"] --> TOK["WordPiece tokenizer<br/>CLS + tokens + SEP, max 256"]
+    TOK --> EMB["Token + position + segment embeddings<br/>768 dimensions"]
+    EMB --> ENC["12 Transformer encoder layers<br/>12 attention heads, hidden size 768"]
+    ENC --> POOL["CLS token representation<br/>768 dimensions"]
+    POOL --> HEAD["Dropout 0.1, then Linear 768 to 2"]
+    HEAD --> OUT["Softmax: P(FAKE), P(REAL)"]
+```
+
+| Component | File | Role |
+|---|---|---|
+| Text cleaning | `text_utils.py` | Removes source fingerprints. The same function is used in training and in the app |
+| Data preparation | `prepare_data.py` | Cleaning, de-duplication, split, mixed-length samples, leak check |
+| Training | `train_bert.py` | Fine-tunes `bert-base-uncased` and saves `model/` |
+| Evaluation | `evaluate.py` | Accuracy and F1 per input length, confusion matrix |
+| Inference | `predictor.py` | Loads the model, chunks long text, averages probabilities |
+| Web server | `app.py` | Flask pages and the `/api/predict` REST endpoint |
+| Front end | `templates/` | Analyze, History, Performance, How it works, About |
+
 ## Web app
 
 | Page | Description |
